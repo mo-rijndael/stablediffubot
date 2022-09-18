@@ -3,6 +3,7 @@ import asyncio
 import toml
 from aiogram import Bot, Dispatcher
 from aiogram.types import Message
+from pydantic.errors import PydanticValueError, PydanticTypeError
 
 from connection import connection
 from models import Params
@@ -18,4 +19,7 @@ async def process_request(message: Message):
         return
     status_message = await message.answer("Принято! Прогресс буду обновлять в реальном времени редактируя это сообщение")
     args = Params(prompt=message.text)
-    asyncio.create_task(connection(args, status_message.chat.id, status_message.message_id, bot))
+    try:
+        await connection(args, status_message)
+    except (PydanticValueError, PydanticTypeError):
+        await status_message.edit_text("Сервер прислал какую-то совершенно неадекватную херню")
