@@ -17,7 +17,7 @@ async def process_request(message: Message):
     if not message.text:
         await message.answer("Нейросеть понимает только запросы текстом")
         return
-    status_message = await message.answer("Принято! Прогресс буду обновлять в реальном времени редактируя это сообщение")
+    status_message = await message.answer("Принято!")
     args = Params(prompt=message.text)
     try:
         await connection(args, status_message)
