@@ -11,7 +11,7 @@ config = toml.load(open("./config.toml"))
 bot = Bot(config['token'])
 dispatcher = Dispatcher(bot)
 
-@dispatcher.message_handler()
+@dispatcher.message_handler(run_task=True)
 async def process_request(message: Message):
     if not message.text:
         await message.answer("Нейросеть понимает только запросы текстом")
