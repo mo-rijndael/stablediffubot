@@ -1,44 +1,44 @@
 import base64
 from io import BytesIO
 
-import aiohttp
 import pydantic
 import websockets
-from aiogram import Bot
-from aiogram.types import MediaGroup, InputFile
+from aiogram.types import MediaGroup, InputFile, Message as TelegramMessage
+from loguru import logger
 
 from models import Params, Message, JoinMessage, EstimationUpdate, DataRequested, Done, ProcessStarts, Request, Output, \
-    Fail
+    Fail, QueueFull
 
+_3MB = 3 * 2 ** 20
+_QUEUE_URL = "wss://spaces.huggingface.tech/stabilityai/stable-diffusion/queue/join"
 
 def _extract_pics(data: Output) -> list[BytesIO]:
-    return [BytesIO(base64.b64decode(pic)) for pic in data.data[0]]
+    return [BytesIO(base64.b64decode(_from_data_uri(pic)))
+            for pic in data.data[0]]
 
-async def connection(params: Params, chat_id: int, message_id: int, bot: Bot):
-    session = JoinMessage()
-    async with aiohttp.ClientSession() as client:
-        get_seed_params = {"data": [], "fn_index": 4, "session_hash": session.hash}
-        async with client.post("https://hf.space/embed/stabilityai/stable-diffusion/api/predict/", json=get_seed_params) as request:
-            response = await request.json()
-    print(response)
-    [seed] = response['data']
-    params.seed = seed
+def _from_data_uri(uri: str) -> str:
+    header = "data:image/png;base64,"
+    return uri.removeprefix(header)
 
-    async with websockets.connect("wss://spaces.huggingface.tech/stabilityai/stable-diffusion/queue/join") as ws:
-        await ws.send(session.json())
+async def connection(params: Params, status_message: TelegramMessage):
+    session = JoinMessage().json()
+    async with websockets.connect(_QUEUE_URL, max_size=_3MB) as ws:
+        logger.debug(session)
+        await ws.send(session)
         async for m in ws:
-            if len(m) < 1000:
-                print(m)
+            logger.debug(m[:500])
             message = pydantic.parse_raw_as(Message, m)
             match message:
+                case QueueFull():
+                    await status_message.edit_text("Очередь переполнена! Попробуйте ещё раз!")
                 case EstimationUpdate(rank=rank, queue_size=size, rank_eta=eta):
-                    await bot.edit_message_text(f"В очереди: {rank + 1} из {size}. Осталось примерно: {eta:.2f} сек", chat_id, message_id)
+                    await status_message.edit_text(f"В очереди: {rank + 1} из {size}. Осталось примерно: {eta:.2f} сек")
                 case DataRequested():
                     data = Request(data=params).json(models_as_dict=False)
-                    print(data)
+                    logger.debug(data)
                     await ws.send(data)
                 case ProcessStarts():
-                    await bot.edit_message_text("В обработке. Уже скоро!", chat_id, message_id)
+                    await status_message.edit_text("В обработке. Уже скоро!")
                 case Done(output=output):
                     media = MediaGroup()
                     caption = (f"Сгенерировано Stable Diffusion по запросу "
@@ -46,7 +46,9 @@ async def connection(params: Params, chat_id: int, message_id: int, bot: Bot):
                                f"seed: {params.seed}")
                     for photo in _extract_pics(output):
                         media.attach_photo(InputFile(photo), caption=caption)
-                    await bot.delete_message(chat_id, message_id)
-                    await bot.send_media_group(chat_id, media)
+                    await status_message.delete()
+                    await status_message.answer_media_group(media)
+                    return
                 case Fail(error=error):
-                    await bot.edit_message_text(f"Сервер вернул ошибку «{error}» вместо результатов. Ничо не могу сделать", chat_id, message_id)
+                    await status_message.edit_text(f"Сервер вернул ошибку «{error}» вместо результатов. Ничо не могу сделать")
+    await status_message.edit_text("Произошла какая-то непонятная хрень и никто не знает почему")

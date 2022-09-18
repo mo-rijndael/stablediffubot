@@ -18,7 +18,11 @@ class Params(BaseModel):
     seed: int = Field(default_factory=lambda: random.randint(0, 2**31))
 
     def to_list(self):
-        return [self.prompt, self.images, self.guidance_scale, self.seed]
+        return [self.prompt,
+                self.images,
+                self.steps,
+                self.guidance_scale,
+                self.seed]
 
 class Request(BaseModel):
     fn_index = 1
@@ -56,7 +60,10 @@ class EstimationUpdate(BaseModel):
 class ProcessStarts(BaseModel):
     msg: Literal['process_starts']
 
-Message = EstimationUpdate | DataRequested | ProcessStarts | Done | Fail
+class QueueFull(BaseModel):
+    msg: Literal['queue_full']
+
+Message = QueueFull | EstimationUpdate | DataRequested | ProcessStarts | Done | Fail
 
 class Config(BaseModel):
     token: str
