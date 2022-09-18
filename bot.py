@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.types import Message
 
 from connection import connection
-from models import Request, Params
+from models import Params
 
 config = toml.load(open("./config.toml"))
 bot = Bot(config['token'])
