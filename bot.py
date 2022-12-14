@@ -1,9 +1,8 @@
 import toml
 from aiogram import Bot, Dispatcher
 from aiogram.types import Message
-from pydantic.errors import PydanticValueError, PydanticTypeError
 
-from connection import connection
+from connection import connection, QueueLooksTooBig
 from models import Params
 
 config = toml.load(open("./config.toml"))
@@ -37,5 +36,5 @@ async def process_request(message: Message):
     args = Params(prompt=message.text)
     try:
         await connection(args, status_message)
-    except (PydanticValueError, PydanticTypeError):
-        await status_message.edit_text("Сервер прислал какую-то совершенно неадекватную херню")
+    except QueueLooksTooBig:
+        await connection(args, status_message, try_better_place=False)
